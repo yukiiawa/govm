@@ -12,7 +12,7 @@ jobs:
     name: unit-${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     env:
-      ZIG_VERSION: 0.16.0-dev.3013+abd131e33
+      ZIG_VERSION: master
 
     strategy:
       fail-fast: false
@@ -65,7 +65,7 @@ jobs:
     name: e2e-${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     env:
-      ZIG_VERSION: 0.16.0-dev.3013+abd131e33
+      ZIG_VERSION: master
 
     strategy:
       fail-fast: false
@@ -189,7 +189,7 @@ jobs:
     name: cross-build-release-targets
     runs-on: ubuntu-latest
     env:
-      ZIG_VERSION: 0.16.0-dev.3013+abd131e33
+      ZIG_VERSION: master
 
     steps:
       - name: Checkout

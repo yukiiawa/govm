@@ -18,7 +18,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      ZIG_VERSION: 0.16.0-dev.3013+abd131e33
+      ZIG_VERSION: master
 
     steps:
       - name: Checkout
