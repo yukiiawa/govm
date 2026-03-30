@@ -15,7 +15,6 @@ pub fn useVersion(
     if (!fs.pathExists(io, sdk_path)) return error.VersionNotInstalled;
 
     try updateCurrentLink(io, layout.current_dir, sdk_path);
-    try cfg.saveState(allocator, io, layout, .{ .current_version = version });
 
     const bin_path = try fs.join(allocator, &.{ layout.current_dir, "bin" });
     defer allocator.free(bin_path);
@@ -24,8 +23,15 @@ pub fn useVersion(
     try syncPersistentGoroot(allocator, io, env_map, layout.current_dir);
 }
 
-pub fn currentGoBinary(allocator: std.mem.Allocator, current_dir: []const u8) ![]u8 {
-    return fs.join(allocator, &.{ current_dir, "bin", fs.exeName() });
+pub fn currentSdkPath(allocator: std.mem.Allocator, io: std.Io, current_dir: []const u8) ![]u8 {
+    if (!fs.pathExists(io, current_dir)) return error.CurrentVersionMissing;
+    return std.Io.Dir.realPathFileAbsoluteAlloc(io, current_dir, allocator);
+}
+
+pub fn currentGoBinary(allocator: std.mem.Allocator, io: std.Io, current_dir: []const u8) ![]u8 {
+    const sdk_path = try currentSdkPath(allocator, io, current_dir);
+    defer allocator.free(sdk_path);
+    return fs.join(allocator, &.{ sdk_path, "bin", fs.exeName() });
 }
 
 pub fn currentTargetsSdk(
@@ -338,9 +344,25 @@ fn windowsPsQuote(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
 }
 
 test "current go binary path" {
-    const path = try currentGoBinary(std.testing.allocator, "/tmp/current");
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root_path);
+
+    const current_dir = try fs.join(std.testing.allocator, &.{ root_path, "current" });
+    defer std.testing.allocator.free(current_dir);
+    const sdk_path = try fs.join(std.testing.allocator, &.{ root_path, "sdks", "go1.26.1" });
+    defer std.testing.allocator.free(sdk_path);
+    const expected = try fs.join(std.testing.allocator, &.{ sdk_path, "bin", fs.exeName() });
+    defer std.testing.allocator.free(expected);
+
+    try std.Io.Dir.cwd().createDirPath(std.testing.io, sdk_path);
+    try updateCurrentLink(std.testing.io, current_dir, sdk_path);
+
+    const path = try currentGoBinary(std.testing.allocator, std.testing.io, current_dir);
     defer std.testing.allocator.free(path);
-    try std.testing.expect(std.mem.endsWith(u8, path, fs.exeName()));
+    try std.testing.expectEqualStrings(expected, path);
 }
 
 test "current target sdk matches active link" {

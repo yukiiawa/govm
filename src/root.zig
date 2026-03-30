@@ -21,10 +21,6 @@ pub const AppError = error{
     PathUpdateFailed,
 };
 
-pub const State = struct {
-    current_version: ?[]const u8 = null,
-};
-
 pub const RootLayout = config.RootLayout;
 pub const Platform = platform.Platform;
 

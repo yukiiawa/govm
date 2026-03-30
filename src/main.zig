@@ -44,7 +44,7 @@ pub fn main(init: std.process.Init) !void {
         .install => |version| try handleInstall(allocator, io, stdout, layout, version),
         .use => |version| try handleUse(allocator, io, stdout, stderr, init.environ_map, layout, version),
         .current => try handleCurrent(allocator, io, stdout, layout),
-        .which => try handleWhich(allocator, stdout, layout),
+        .which => try handleWhich(allocator, io, stdout, layout),
         .remove => |version| try handleRemove(allocator, io, stdout, layout, version),
         .help => unreachable,
     }
@@ -319,20 +319,19 @@ fn handleCurrent(
     stdout: *Io.Writer,
     layout: govm.RootLayout,
 ) !void {
-    const state = try govm.config.loadState(allocator, io, layout);
-    defer if (state.current_version) |value| allocator.free(value);
-    const version = state.current_version orelse return error.CurrentVersionMissing;
-    const sdk_path = try layout.sdkDir(allocator, version);
+    const sdk_path = try govm.switcher.currentSdkPath(allocator, io, layout.current_dir);
     defer allocator.free(sdk_path);
+    const version = std.fs.path.basename(sdk_path);
     try stdout.print("{s}\t{s}\n", .{ version, sdk_path });
 }
 
 fn handleWhich(
     allocator: std.mem.Allocator,
+    io: std.Io,
     stdout: *Io.Writer,
     layout: govm.RootLayout,
 ) !void {
-    const go_binary = try govm.switcher.currentGoBinary(allocator, layout.current_dir);
+    const go_binary = try govm.switcher.currentGoBinary(allocator, io, layout.current_dir);
     defer allocator.free(go_binary);
     try stdout.print("{s}\n", .{go_binary});
 }
@@ -349,11 +348,6 @@ fn handleRemove(
     const sdk_path = try layout.sdkDir(allocator, normalized_version);
     defer allocator.free(sdk_path);
 
-    const state = try govm.config.loadState(allocator, io, layout);
-    defer if (state.current_version) |value| allocator.free(value);
-    if (state.current_version) |current| {
-        if (std.mem.eql(u8, current, normalized_version)) return error.CannotRemoveCurrentVersion;
-    }
     if (try govm.switcher.currentTargetsSdk(allocator, io, layout.current_dir, sdk_path)) {
         return error.CannotRemoveCurrentVersion;
     }
