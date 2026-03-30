@@ -42,7 +42,9 @@ if not string match -q "*$latest_version*" $which_output
     echo "which output did not include expected version" >&2
     exit 1
 end
-if string match -q "*/current/*" (string replace -a '\' '/' $which_output)
+
+set normalized_which_output (string replace -a '\\' '/' $which_output)
+if string match -q "*/current/*" $normalized_which_output
     echo "which should point to the real SDK path, not /current/" >&2
     exit 1
 end

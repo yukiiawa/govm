@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 set -eu
-trap 'status=$?; if [ "$status" -ne 0 ]; then echo "e2e.sh failed near line $LINENO" >&2; fi' EXIT
+trap 'exit_code=$?; if [ "$exit_code" -ne 0 ]; then echo "e2e.sh failed" >&2; fi' EXIT
 
 root_dir="${RUNNER_TEMP:-/tmp}/govm-e2e-root"
 rm -rf "${root_dir}"
