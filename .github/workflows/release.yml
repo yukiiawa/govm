@@ -17,17 +17,14 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      ZIG_VERSION: master
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Zig
-        uses: mlugg/setup-zig@v1
-        with:
-          version: ${{ env.ZIG_VERSION }}
+        shell: pwsh
+        run: .github/scripts/setup-zig.ps1
 
       - name: Resolve release tag
         id: meta
