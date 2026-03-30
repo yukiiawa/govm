@@ -1,0 +1,24 @@
+# Zig
+.zig-cache/
+zig-out/
+
+# Release outputs
+release/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Testing/Local development
+/test_root/
+/sdks/
+/downloads/
+state.json
+current/
