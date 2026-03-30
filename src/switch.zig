@@ -390,3 +390,82 @@ test "current target sdk matches active link" {
     try std.testing.expect(try currentTargetsSdk(std.testing.allocator, std.testing.io, current_dir, sdk_a));
     try std.testing.expect(!try currentTargetsSdk(std.testing.allocator, std.testing.io, current_dir, sdk_b));
 }
+
+test "ensure shell lines updates existing posix and fish configs without duplication" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const home = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(home);
+
+    const bashrc_path = try fs.join(std.testing.allocator, &.{ home, ".bashrc" });
+    defer std.testing.allocator.free(bashrc_path);
+    const fish_config_path = try fs.join(std.testing.allocator, &.{ home, ".config", "fish", "config.fish" });
+    defer std.testing.allocator.free(fish_config_path);
+
+    if (std.fs.path.dirname(fish_config_path)) |parent| {
+        try std.Io.Dir.cwd().createDirPath(std.testing.io, parent);
+    }
+
+    try std.Io.Dir.writeFile(std.Io.Dir.cwd(), std.testing.io, .{
+        .sub_path = bashrc_path,
+        .data = "# bash config\n",
+        .flags = .{ .truncate = true },
+    });
+    try std.Io.Dir.writeFile(std.Io.Dir.cwd(), std.testing.io, .{
+        .sub_path = fish_config_path,
+        .data = "# fish config\n",
+        .flags = .{ .truncate = true },
+    });
+
+    try ensureShellLines(
+        std.testing.allocator,
+        std.testing.io,
+        home,
+        "export PATH=\"/tmp/govm/current/bin:$PATH\"",
+        "fish_add_path '/tmp/govm/current/bin'",
+    );
+    try ensureShellLines(
+        std.testing.allocator,
+        std.testing.io,
+        home,
+        "export PATH=\"/tmp/govm/current/bin:$PATH\"",
+        "fish_add_path '/tmp/govm/current/bin'",
+    );
+
+    const bashrc = try std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), std.testing.io, bashrc_path, std.testing.allocator, .unlimited);
+    defer std.testing.allocator.free(bashrc);
+    const fish_config = try std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), std.testing.io, fish_config_path, std.testing.allocator, .unlimited);
+    defer std.testing.allocator.free(fish_config);
+
+    try std.testing.expect(std.mem.indexOf(u8, bashrc, "export PATH=\"/tmp/govm/current/bin:$PATH\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_config, "fish_add_path '/tmp/govm/current/bin'") != null);
+    try std.testing.expectEqual(@as(?usize, null), std.mem.indexOf(u8, bashrc, "fish_add_path '/tmp/govm/current/bin'"));
+    try std.testing.expectEqual(@as(?usize, null), std.mem.indexOf(u8, fish_config, "export PATH=\"/tmp/govm/current/bin:$PATH\""));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, bashrc, "export PATH=\"/tmp/govm/current/bin:$PATH\""));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, fish_config, "fish_add_path '/tmp/govm/current/bin'"));
+}
+
+test "ensure shell lines creates profile when no shell config exists" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const home = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(home);
+
+    try ensureShellLines(
+        std.testing.allocator,
+        std.testing.io,
+        home,
+        "export GOROOT=\"/tmp/govm/current\"",
+        "set -x GOROOT '/tmp/govm/current'",
+    );
+
+    const profile_path = try fs.join(std.testing.allocator, &.{ home, ".profile" });
+    defer std.testing.allocator.free(profile_path);
+    const profile = try std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), std.testing.io, profile_path, std.testing.allocator, .unlimited);
+    defer std.testing.allocator.free(profile);
+
+    try std.testing.expect(std.mem.indexOf(u8, profile, "# Added by govm") != null);
+    try std.testing.expect(std.mem.indexOf(u8, profile, "export GOROOT=\"/tmp/govm/current\"") != null);
+}
