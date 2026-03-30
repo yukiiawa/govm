@@ -305,12 +305,17 @@ fn handleUse(
     const normalized_version = try normalizeVersionArg(allocator, version);
     defer allocator.free(normalized_version);
 
-    govm.switcher.useVersion(allocator, io, env_map, layout, normalized_version) catch |err| switch (err) {
-        error.PathUpdateFailed => {
-            try stderr.print("warning: switched govm current version, but failed to sync PATH/GOROOT.\n", .{});
-        },
-        else => return err,
-    };
+    if (@import("builtin").os.tag == .windows) {
+        govm.switcher.useVersion(allocator, io, env_map, layout, normalized_version) catch |err| switch (err) {
+            error.PathUpdateFailed => {
+                try stderr.print("warning: switched govm current version, but failed to sync PATH/GOROOT.\n", .{});
+            },
+            else => return err,
+        };
+    } else {
+        try govm.switcher.useVersion(allocator, io, env_map, layout, normalized_version);
+    }
+
     try stdout.print("using {s}\n", .{normalized_version});
     if (@import("builtin").os.tag == .windows) {
         try stdout.print("note: newly opened terminals will see the updated PATH; the current shell process will not be changed in-place.\n", .{});

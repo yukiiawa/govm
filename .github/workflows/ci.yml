@@ -50,8 +50,8 @@ jobs:
 
       - name: Run unit tests (zsh)
         if: matrix.shell_kind == 'zsh'
-        shell: zsh
-        run: zig build test
+        shell: bash
+        run: zsh -c 'zig build test'
 
       - name: Run unit tests (pwsh)
         if: matrix.shell_kind == 'pwsh'
@@ -137,8 +137,8 @@ jobs:
 
       - name: Build govm (zsh)
         if: matrix.step_shell_kind == 'zsh'
-        shell: zsh
-        run: zig build
+        shell: bash
+        run: zsh -c 'zig build'
 
       - name: Build govm (pwsh)
         if: matrix.step_shell_kind == 'pwsh'
@@ -165,9 +165,8 @@ jobs:
 
       - name: Run E2E flow (sh via zsh)
         if: matrix.e2e_kind == 'sh' && matrix.step_shell_kind == 'zsh'
-        shell: zsh
-        run: |
-          . .github/scripts/e2e.sh
+        shell: bash
+        run: zsh -c '. .github/scripts/e2e.sh'
 
       - name: Run E2E flow (fish)
         if: matrix.e2e_kind == 'fish'
