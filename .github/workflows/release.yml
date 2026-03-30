@@ -50,7 +50,8 @@ jobs:
       - name: Package release artifacts
         shell: bash
         run: |
-          mkdir -p dist
+          dist_dir="${GITHUB_WORKSPACE}/dist"
+          mkdir -p "${dist_dir}"
 
           version="${{ steps.meta.outputs.version }}"
           release_root="zig-out/bin/release"
@@ -67,15 +68,15 @@ jobs:
             if [[ "${target}" == windows-* ]]; then
               (
                 cd "${target_dir}"
-                zip -9 -r "../../../dist/${archive_base}.zip" .
+                zip -9 -r "${dist_dir}/${archive_base}.zip" .
               )
             else
-              tar -C "${target_dir}" -czf "dist/${archive_base}.tar.gz" .
+              tar -C "${target_dir}" -czf "${dist_dir}/${archive_base}.tar.gz" .
             fi
           done
 
           (
-            cd dist
+            cd "${dist_dir}"
             sha256sum * > SHA256SUMS.txt
           )
 
