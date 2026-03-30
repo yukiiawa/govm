@@ -23,11 +23,3 @@ pub const AppError = error{
 
 pub const RootLayout = config.RootLayout;
 pub const Platform = platform.Platform;
-
-pub fn add(a: i32, b: i32) i32 {
-    return a + b;
-}
-
-test "basic add functionality" {
-    try std.testing.expect(add(3, 7) == 10);
-}

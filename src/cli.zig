@@ -9,8 +9,8 @@ pub const ListOptions = struct {
     installed_only: bool = false,
     stable_only: bool = false,
     reverse: bool = false,
-    latest: ?usize = null,
     head: ?usize = null,
+    tail: ?usize = null,
 };
 
 pub const Command = union(enum) {
@@ -51,8 +51,8 @@ pub fn parse(args: []const []const u8) !Parsed {
         var installed_only = false;
         var stable_only = false;
         var reverse = false;
-        var latest: ?usize = null;
         var head: ?usize = null;
+        var tail: ?usize = null;
         while (index < args.len) {
             if (std.mem.eql(u8, args[index], "--installed")) {
                 installed_only = true;
@@ -60,16 +60,10 @@ pub fn parse(args: []const []const u8) !Parsed {
                 stable_only = true;
             } else if (std.mem.eql(u8, args[index], "--reverse")) {
                 reverse = true;
-            } else if (std.mem.eql(u8, args[index], "--newest")) {
-                reverse = true;
-            } else if (std.mem.eql(u8, args[index], "--latest")) {
-                index += 1;
-                if (index >= args.len) return error.InvalidArguments;
-                latest = std.fmt.parseInt(usize, args[index], 10) catch return error.InvalidArguments;
             } else if (std.mem.eql(u8, args[index], "--tail")) {
                 index += 1;
                 if (index >= args.len) return error.InvalidArguments;
-                latest = std.fmt.parseInt(usize, args[index], 10) catch return error.InvalidArguments;
+                tail = std.fmt.parseInt(usize, args[index], 10) catch return error.InvalidArguments;
             } else if (std.mem.eql(u8, args[index], "--head")) {
                 index += 1;
                 if (index >= args.len) return error.InvalidArguments;
@@ -77,12 +71,13 @@ pub fn parse(args: []const []const u8) !Parsed {
             } else return error.InvalidArguments;
             index += 1;
         }
+        if (head != null and tail != null) return error.InvalidArguments;
         return .{ .root = root_path, .command = .{ .list = .{
             .installed_only = installed_only,
             .stable_only = stable_only,
             .reverse = reverse,
-            .latest = latest,
             .head = head,
+            .tail = tail,
         } } };
     }
 
@@ -118,35 +113,37 @@ pub fn usage() []const u8 {
         \\govm - Go version manager built with Zig
         \\
         \\Usage:
-        \\  govm --root <path> list [--installed] [--stable-only] [--latest N|--tail N] [--head N] [--reverse|--newest]
-        \\  govm --root <path> install <version>
-        \\  govm --root <path> use <version>
-        \\  govm --root <path> current
-        \\  govm --root <path> which
-        \\  govm --root <path> remove <version>
+        \\  govm [--root <path>] list [--installed] [--stable-only] [--head N|--tail N] [--reverse]
+        \\  govm [--root <path>] install <version>
+        \\  govm [--root <path>] use <version>
+        \\  govm [--root <path>] current
+        \\  govm [--root <path>] which
+        \\  govm [--root <path>] remove <version>
         \\
-        \\Environment:
-        \\  GOVM_ROOT   Default installation root when --root is not provided.
+        \\Root Resolution:
+        \\  1. --root <path>   Uses and saves the root for future runs.
+        \\  2. GOVM_ROOT       Overrides the saved root when set.
+        \\  3. ~/.govm/config.json
         \\
     ;
 }
 
+// 测试：解析 install 命令及其 --root 参数
 test "parse install" {
     const parsed = try parse(&.{ "govm", "--root", "/tmp/govm", "install", "go1.23.0" });
     try std.testing.expectEqualStrings("/tmp/govm", parsed.root.?);
     try std.testing.expectEqualStrings("go1.23.0", parsed.command.install);
 }
 
+// 测试：解析 list 命令的各种标志位（--stable-only, --tail, --reverse）
 test "parse list flags" {
-    const parsed = try parse(&.{ "govm", "list", "--stable-only", "--latest", "20", "--reverse" });
+    const parsed = try parse(&.{ "govm", "list", "--stable-only", "--tail", "20", "--reverse" });
     try std.testing.expect(parsed.command.list.stable_only);
     try std.testing.expect(parsed.command.list.reverse);
-    try std.testing.expectEqual(@as(?usize, 20), parsed.command.list.latest);
+    try std.testing.expectEqual(@as(?usize, 20), parsed.command.list.tail);
 }
 
-test "parse list aliases" {
-    const parsed = try parse(&.{ "govm", "list", "--newest", "--tail", "5", "--head", "2" });
-    try std.testing.expect(parsed.command.list.reverse);
-    try std.testing.expectEqual(@as(?usize, 5), parsed.command.list.latest);
-    try std.testing.expectEqual(@as(?usize, 2), parsed.command.list.head);
+// 测试：list 命令拒绝同时使用 --head 和 --tail 参数
+test "parse list rejects head tail combination" {
+    try std.testing.expectError(error.InvalidArguments, parse(&.{ "govm", "list", "--tail", "5", "--head", "2" }));
 }

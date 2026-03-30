@@ -24,24 +24,12 @@ pub fn ensureDeleted(io: std.Io, path: []const u8) !void {
     };
 }
 
-/// Removes a symlink (Unix) or junction reparse point (Windows) at `path`
-/// without following it into the target. Safe when `path` does not exist,
-/// including dangling junctions whose target has already been removed.
-///
-/// Returns an error if `path` is a real non-empty directory; use
-/// `deleteTreeIfExists` for that case instead.
 pub fn deleteLink(io: std.Io, path: []const u8) !void {
     if (@import("builtin").os.tag == .windows) {
-        // RemoveDirectory on a junction removes only the reparse point itself,
-        // never the target directory or its contents. This also works for
-        // dangling junctions where the target path no longer exists.
         std.Io.Dir.deleteDirAbsolute(io, path) catch |err| switch (err) {
             error.FileNotFound => {},
-            // DirNotEmpty means this is a real directory, not a junction.
-            // Propagate the error rather than silently deleting real data.
             error.DirNotEmpty => return err,
             else => {
-                // Could be a file symlink; try unlink as a fallback.
                 std.Io.Dir.deleteFileAbsolute(io, path) catch |e| switch (e) {
                     error.FileNotFound => {},
                     else => return err,
@@ -49,8 +37,6 @@ pub fn deleteLink(io: std.Io, path: []const u8) !void {
             },
         };
     } else {
-        // unlink(2) removes the directory entry for the symlink without
-        // following it, so the target directory and its contents are untouched.
         std.Io.Dir.deleteFileAbsolute(io, path) catch |err| switch (err) {
             error.FileNotFound => {},
             else => return err,
@@ -89,6 +75,7 @@ pub fn appendPathEntry(allocator: std.mem.Allocator, path_value: []const u8, nee
     return std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ path_value, delimiter, needle });
 }
 
+// 测试：验证路径字符串是否包含特定的条目（支持 Windows ';' 和 POSIX ':' 分隔符）
 test "path contains entry" {
     try std.testing.expect(pathContainsEntry("a:b:c", "b"));
     try std.testing.expect(!pathContainsEntry("a:b:c", "d"));

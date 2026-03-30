@@ -41,6 +41,7 @@ pub fn fromTarget(target: std.Target) ?Platform {
     };
 }
 
+// 测试：验证 Windows amd64 平台的识别与映射逻辑
 test "map windows amd64" {
     const query = std.Target.Query{
         .cpu_arch = .x86_64,

@@ -72,6 +72,7 @@ pub fn parseReleasesFromSlice(allocator: std.mem.Allocator, data: []const u8) !s
     });
 }
 
+// 测试：验证 Go 官方发布 JSON 的解析逻辑，并能根据平台正确选择对应的安装包
 test "parse and select package" {
     const fixture =
         \\[

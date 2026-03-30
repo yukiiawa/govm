@@ -25,7 +25,9 @@ pub fn useVersion(
 
 pub fn currentSdkPath(allocator: std.mem.Allocator, io: std.Io, current_dir: []const u8) ![]u8 {
     if (!fs.pathExists(io, current_dir)) return error.CurrentVersionMissing;
-    return std.Io.Dir.realPathFileAbsoluteAlloc(io, current_dir, allocator);
+    const real_path_z = try std.Io.Dir.realPathFileAbsoluteAlloc(io, current_dir, allocator);
+    defer allocator.free(real_path_z);
+    return allocator.dupe(u8, real_path_z);
 }
 
 pub fn currentGoBinary(allocator: std.mem.Allocator, io: std.Io, current_dir: []const u8) ![]u8 {
@@ -343,6 +345,7 @@ fn windowsPsQuote(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
     return std.mem.replaceOwned(u8, allocator, value, "'", "''");
 }
 
+// 测试：验证当前 Go 二进制可执行文件的绝对路径生成是否正确
 test "current go binary path" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -365,6 +368,7 @@ test "current go binary path" {
     try std.testing.expectEqualStrings(expected, path);
 }
 
+// 测试：验证当前生效的 SDK 目录与 active link（软/硬链接）是否匹配
 test "current target sdk matches active link" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

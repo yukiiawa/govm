@@ -37,38 +37,7 @@ pub fn removeVersion(io: std.Io, layout: cfg.RootLayout, version: []const u8) !v
     try fs.deleteTreeIfExists(io, sdk_path);
 }
 
-test "remove version deletes installed sdk directory" {
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
 
-    const root_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
-    defer std.testing.allocator.free(root_path);
-
-    var layout = try cfg.RootLayout.init(std.testing.allocator, root_path);
-    defer layout.deinit();
-    try layout.ensureBaseDirs(std.testing.io);
-
-    const sdk_path = try layout.sdkDir(std.testing.allocator, "go1.26.1");
-    defer std.testing.allocator.free(sdk_path);
-    try std.Io.Dir.cwd().createDirPath(std.testing.io, sdk_path);
-
-    try removeVersion(std.testing.io, layout, "go1.26.1");
-    try std.testing.expect(!fs.pathExists(std.testing.io, sdk_path));
-}
-
-test "remove version errors when sdk is not installed" {
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-
-    const root_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
-    defer std.testing.allocator.free(root_path);
-
-    var layout = try cfg.RootLayout.init(std.testing.allocator, root_path);
-    defer layout.deinit();
-    try layout.ensureBaseDirs(std.testing.io);
-
-    try std.testing.expectError(error.VersionNotInstalled, removeVersion(std.testing.io, layout, "go1.26.1"));
-}
 
 fn ensureArchive(
     allocator: std.mem.Allocator,
@@ -189,4 +158,39 @@ fn extractZip(allocator: std.mem.Allocator, io: std.Io, archive_path: []const u8
     try fs.ensureDeleted(io, sdk_path);
     try std.Io.Dir.renameAbsolute(extracted_path, sdk_path, io);
     try fs.deleteTreeIfExists(io, tmp_base);
+}
+
+// 测试：验证删除版本功能会正确移除已安装的 SDK 目录
+test "remove version deletes installed sdk directory" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root_path);
+
+    var layout = try cfg.RootLayout.init(std.testing.allocator, root_path);
+    defer layout.deinit();
+    try layout.ensureBaseDirs(std.testing.io);
+
+    const sdk_path = try layout.sdkDir(std.testing.allocator, "go1.26.1");
+    defer std.testing.allocator.free(sdk_path);
+    try std.Io.Dir.cwd().createDirPath(std.testing.io, sdk_path);
+
+    try removeVersion(std.testing.io, layout, "go1.26.1");
+    try std.testing.expect(!fs.pathExists(std.testing.io, sdk_path));
+}
+
+// 测试：当尝试删除一个未安装的版本时，应返回 VersionNotInstalled 错误
+test "remove version errors when sdk is not installed" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root_path);
+
+    var layout = try cfg.RootLayout.init(std.testing.allocator, root_path);
+    defer layout.deinit();
+    try layout.ensureBaseDirs(std.testing.io);
+
+    try std.testing.expectError(error.VersionNotInstalled, removeVersion(std.testing.io, layout, "go1.26.1"));
 }

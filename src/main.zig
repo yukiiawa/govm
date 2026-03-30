@@ -29,7 +29,11 @@ pub fn main(init: std.process.Init) !void {
         else => {},
     }
 
-    const root_path = govm.config.resolveRoot(allocator, init.environ_map, parsed.root) catch |err| {
+    if (parsed.root) |cli_root| {
+        try govm.config.persistUserRoot(allocator, io, init.environ_map, cli_root);
+    }
+
+    const root_path = govm.config.resolveRoot(allocator, io, init.environ_map, parsed.root) catch |err| {
         try stderr.print("error: {s}\nUse --root <path> or set GOVM_ROOT.\n", .{@errorName(err)});
         try stderr.flush();
         return err;
@@ -125,9 +129,11 @@ fn selectInstalled(installed: [][]u8, options: govm.cli.ListOptions) [][]u8 {
     if (options.head) |count| {
         return installed[0..@min(total, count)];
     }
-    const latest_count = options.latest orelse total;
-    const slice_start = total -| @min(total, latest_count);
-    return installed[slice_start..];
+    if (options.tail) |count| {
+        const slice_start = total -| @min(total, count);
+        return installed[slice_start..];
+    }
+    return installed;
 }
 
 fn selectReleases(releases: []govm.official.Release, options: govm.cli.ListOptions) []govm.official.Release {
@@ -135,9 +141,11 @@ fn selectReleases(releases: []govm.official.Release, options: govm.cli.ListOptio
     if (options.head) |count| {
         return releases[0..@min(total, count)];
     }
-    const latest_count = options.latest orelse total;
-    const slice_start = total -| @min(total, latest_count);
-    return releases[slice_start..];
+    if (options.tail) |count| {
+        const slice_start = total -| @min(total, count);
+        return releases[slice_start..];
+    }
+    return releases;
 }
 
 fn printTwoColumn(stdout: *Io.Writer, left: []const u8, width: usize, right: []const u8) !void {
@@ -261,13 +269,9 @@ fn compareLex(lhs: []const u8, rhs: []const u8) Order {
     return .gt;
 }
 
-test "compare go versions ascending" {
-    try std.testing.expect(compareGoVersion("go1.9", "go1.10") == .lt);
-    try std.testing.expect(compareGoVersion("go1.10rc1", "go1.10") == .lt);
-    try std.testing.expect(compareGoVersion("go1.10beta1", "go1.10rc1") == .lt);
-    try std.testing.expect(compareGoVersion("go1.10", "go1.10.1") == .lt);
-    try std.testing.expect(compareGoVersion("go1.26rc3", "go1.26.0") == .lt);
-}
+
+
+
 
 fn handleInstall(
     allocator: std.mem.Allocator,
@@ -371,6 +375,34 @@ fn normalizeVersionArg(allocator: std.mem.Allocator, version: []const u8) ![]u8 
     return normalized;
 }
 
+// 测试：验证 Go 版本号的升序比较逻辑（包括 RC、Beta 和补丁版本）
+test "compare go versions ascending" {
+    try std.testing.expect(compareGoVersion("go1.9", "go1.10") == .lt);
+    try std.testing.expect(compareGoVersion("go1.10rc1", "go1.10") == .lt);
+    try std.testing.expect(compareGoVersion("go1.10beta1", "go1.10rc1") == .lt);
+    try std.testing.expect(compareGoVersion("go1.10", "go1.10.1") == .lt);
+    try std.testing.expect(compareGoVersion("go1.26rc3", "go1.26.0") == .lt);
+}
+
+// 测试：验证从发布列表中选择尾部（tail）元素的功能，应返回最新的若干个版本
+test "select releases tail returns newest items" {
+    var releases = [_]govm.official.Release{
+        .{ .version = "go1.20.0", .stable = true, .files = &.{} },
+        .{ .version = "go1.21.0", .stable = true, .files = &.{} },
+        .{ .version = "go1.22.0", .stable = true, .files = &.{} },
+        .{ .version = "go1.23.0", .stable = true, .files = &.{} },
+        .{ .version = "go1.24.0", .stable = true, .files = &.{} },
+        .{ .version = "go1.25.0", .stable = true, .files = &.{} },
+    };
+
+    const selected = selectReleases(releases[0..], .{ .tail = 3 });
+    try std.testing.expectEqual(@as(usize, 3), selected.len);
+    try std.testing.expectEqualStrings("go1.23.0", selected[0].version);
+    try std.testing.expectEqualStrings("go1.24.0", selected[1].version);
+    try std.testing.expectEqualStrings("go1.25.0", selected[2].version);
+}
+
+// 测试：参数版本号标准化处理，支持带或不带 'go' 前缀
 test "normalize version arg" {
     const with_prefix = try normalizeVersionArg(std.testing.allocator, "go1.26.1");
     defer std.testing.allocator.free(with_prefix);
@@ -381,6 +413,7 @@ test "normalize version arg" {
     try std.testing.expectEqualStrings("go1.26.1", without_prefix);
 }
 
+// 测试：标准化处理应拒绝非法的输入（如路径遍历字符或非 Go 版本字符串）
 test "normalize version arg rejects invalid input" {
     try std.testing.expectError(error.InvalidArguments, normalizeVersionArg(std.testing.allocator, "..\\evil"));
     try std.testing.expectError(error.InvalidArguments, normalizeVersionArg(std.testing.allocator, "1.26.1/../../oops"));
