@@ -53,8 +53,14 @@ jobs:
           mkdir -p dist
 
           version="${{ steps.meta.outputs.version }}"
+          release_root="zig-out/bin/release"
 
-          for target_dir in zig-out/release/*; do
+          if [[ ! -d "${release_root}" ]]; then
+            echo "release output directory not found: ${release_root}" >&2
+            exit 1
+          fi
+
+          for target_dir in "${release_root}"/*; do
             target="$(basename "${target_dir}")"
             archive_base="govm-${version}-${target}"
 
