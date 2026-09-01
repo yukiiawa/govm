@@ -18,10 +18,33 @@ if (-not $versionMatch.Success) {
 }
 
 $zigVersion = $versionMatch.Groups[1].Value
-$versionEntryProperty = $index.PSObject.Properties[$zigVersion]
-if ($null -eq $versionEntryProperty) {
-    throw "No official Zig download entry for version '$zigVersion'"
+$versionParts = $zigVersion -split '\.'
+if ($versionParts.Count -lt 2) {
+    throw "Unsupported Zig version format '$zigVersion'"
 }
+$versionLine = "$($versionParts[0]).$($versionParts[1])"
+
+# Prefer the stable release for the same major/minor line. Only use a
+# development build from that same line when no stable release is available.
+$stableVersion = "$versionLine.0"
+$versionEntryProperty = $index.PSObject.Properties[$stableVersion]
+$resolvedVersion = $stableVersion
+
+if ($null -eq $versionEntryProperty) {
+    $devCandidates = @(
+        $index.PSObject.Properties |
+            Where-Object {
+                $_.Name -match "^$([regex]::Escape($versionLine))\.\d+-dev\."
+            } |
+            Sort-Object { [datetime]$_.Value.date } -Descending
+    )
+    if ($devCandidates.Count -eq 0) {
+        throw "No official Zig stable or development download entry for version line '$versionLine'"
+    }
+    $versionEntryProperty = $devCandidates[0]
+    $resolvedVersion = $versionEntryProperty.Name
+}
+
 $versionEntry = $versionEntryProperty.Value
 
 $zigOs = switch ($env:RUNNER_OS) {
@@ -41,7 +64,7 @@ $zigArch = switch ($env:RUNNER_ARCH) {
 $key = "$zigArch-$zigOs"
 $entry = $versionEntry.$key
 if ($null -eq $entry) {
-    throw "No official Zig download entry for version '$zigVersion' and target '$key'"
+    throw "No official Zig download entry for version '$resolvedVersion' and target '$key'"
 }
 
 $tarballUrl = $entry.tarball
@@ -53,7 +76,7 @@ $archiveName = Split-Path -Leaf $tarballUrl
 $archivePath = Join-Path $installRoot $archiveName
 $extractDir = Join-Path $installRoot "extract"
 
-Write-Host "Downloading Zig $zigVersion from official source: $tarballUrl"
+Write-Host "Requested Zig $zigVersion; downloading Zig $resolvedVersion from official source: $tarballUrl"
 Invoke-WebRequest -Uri $tarballUrl -OutFile $archivePath
 
 New-Item -ItemType Directory -Path $extractDir | Out-Null
