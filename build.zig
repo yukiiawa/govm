@@ -40,7 +40,13 @@ pub fn build(b: *std.Build) void {
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_cmd.addArgs(args);
+    // Zig 0.17-dev no longer exposes build arguments through b.args.
+    // Keep compatibility with older Zig versions used by local development.
+    if (@hasDecl(std.Build.Step.Run, "addPassthruArgs")) {
+        run_cmd.addPassthruArgs();
+    } else if (@hasField(std.Build, "args")) {
+        if (b.args) |args| run_cmd.addArgs(args);
+    }
 
     const mod_tests = b.addTest(.{ .root_module = mod });
     const run_mod_tests = b.addRunArtifact(mod_tests);
