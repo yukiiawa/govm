@@ -33,19 +33,19 @@ pub fn main(init: std.process.Init) !void {
         try govm.config.persistUserRoot(allocator, io, init.environ_map, cli_root);
     }
 
-    const root_path = govm.config.resolveRoot(allocator, io, init.environ_map, parsed.root) catch |err| {
+    var app_config = govm.config.resolve(allocator, io, init.environ_map, parsed.root) catch |err| {
         try stderr.print("error: {s}\nUse --root <path> or set GOVM_ROOT.\n", .{@errorName(err)});
         try stderr.flush();
         return err;
     };
-    defer allocator.free(root_path);
+    defer app_config.deinit();
 
-    var layout = try govm.config.RootLayout.init(allocator, root_path);
+    var layout = try govm.config.RootLayout.init(allocator, app_config.root);
     defer layout.deinit();
 
     switch (parsed.command) {
-        .list => |cmd| try handleList(allocator, io, stdout, layout, cmd),
-        .install => |version| try handleInstall(allocator, io, stdout, layout, version),
+        .list => |cmd| try handleList(allocator, io, stdout, layout, cmd, app_config.release_index_url),
+        .install => |version| try handleInstall(allocator, io, stdout, layout, version, app_config.release_index_url, app_config.download_url),
         .use => |version| try handleUse(allocator, io, stdout, stderr, init.environ_map, layout, version),
         .current => try handleCurrent(allocator, io, stdout, layout),
         .which => try handleWhich(allocator, io, stdout, layout),
@@ -62,6 +62,7 @@ fn handleList(
     stdout: *Io.Writer,
     layout: govm.RootLayout,
     options: govm.cli.ListOptions,
+    index_url: []const u8,
 ) !void {
     if (options.installed_only) {
         const installed = try govm.config.listInstalledVersions(allocator, io, layout);
@@ -85,7 +86,7 @@ fn handleList(
     }
 
     const platform = try govm.platform.detect();
-    const releases = try govm.official.fetchReleases(allocator, io);
+    const releases = try govm.official.fetchReleases(allocator, io, index_url);
     defer releases.deinit();
     std.mem.sort(govm.official.Release, releases.value, {}, lessThanReleaseVersion);
 
@@ -269,27 +270,25 @@ fn compareLex(lhs: []const u8, rhs: []const u8) Order {
     return .gt;
 }
 
-
-
-
-
 fn handleInstall(
     allocator: std.mem.Allocator,
     io: std.Io,
     stdout: *Io.Writer,
     layout: govm.RootLayout,
     version: []const u8,
+    index_url: []const u8,
+    download_url: []const u8,
 ) !void {
     const normalized_version = try normalizeVersionArg(allocator, version);
     defer allocator.free(normalized_version);
 
     const platform = try govm.platform.detect();
-    const releases = try govm.official.fetchReleases(allocator, io);
+    const releases = try govm.official.fetchReleases(allocator, io, index_url);
     defer releases.deinit();
 
     const release = govm.official.findRelease(releases.value, normalized_version) orelse return error.VersionNotFound;
     const package = govm.official.selectPackage(release, platform) orelse return error.PackageNotFound;
-    try govm.installer.installVersion(allocator, io, layout, platform, package);
+    try govm.installer.installVersion(allocator, io, layout, platform, package, download_url);
     try stdout.print("installed {s}\n", .{normalized_version});
 }
 

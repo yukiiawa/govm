@@ -1,8 +1,6 @@
 const std = @import("std");
 const platform_mod = @import("platform.zig");
 
-pub const index_url = "https://go.dev/dl/?mode=json&include=all";
-
 pub const File = struct {
     filename: []const u8,
     os: []const u8,
@@ -19,7 +17,7 @@ pub const Release = struct {
     files: []File,
 };
 
-pub fn fetchReleases(allocator: std.mem.Allocator, io: std.Io) !std.json.Parsed([]Release) {
+pub fn fetchReleases(allocator: std.mem.Allocator, io: std.Io, index_url: []const u8) !std.json.Parsed([]Release) {
     var client: std.http.Client = .{
         .allocator = allocator,
         .io = io,

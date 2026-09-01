@@ -57,6 +57,17 @@ govm [--root <path>] remove <version>
 When `--root <path>` is provided, `govm` also saves it to
 `~/.govm/config.json` for future runs.
 
+The same file can override the Go release feed and archive mirror. The archive
+URL must contain `{s}`, which is replaced with the selected package filename:
+
+```json
+{
+  "root": "/path/to/govm-root",
+  "release_index_url": "https://go.dev/dl/?mode=json&include=all",
+  "download_url": "https://go.dev/dl/{s}"
+}
+```
+
 ## Typical Usage
 
 First time:

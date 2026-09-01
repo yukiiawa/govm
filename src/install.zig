@@ -10,6 +10,7 @@ pub fn installVersion(
     layout: cfg.RootLayout,
     platform: platform_mod.Platform,
     package: official.File,
+    download_url: []const u8,
 ) !void {
     try layout.ensureBaseDirs(io);
 
@@ -21,7 +22,7 @@ pub fn installVersion(
 
     if (fs.pathExists(io, sdk_path)) return;
 
-    try ensureArchive(allocator, io, archive_path, package);
+    try ensureArchive(allocator, io, archive_path, package, download_url);
 
     if (platform.archive_kind == .tar_gz) {
         try extractTarGz(io, archive_path, sdk_path);
@@ -37,24 +38,23 @@ pub fn removeVersion(io: std.Io, layout: cfg.RootLayout, version: []const u8) !v
     try fs.deleteTreeIfExists(io, sdk_path);
 }
 
-
-
 fn ensureArchive(
     allocator: std.mem.Allocator,
     io: std.Io,
     archive_path: []const u8,
     package: official.File,
+    download_url: []const u8,
 ) !void {
     if (fs.pathExists(io, archive_path)) {
         try verifyArchive(io, archive_path, package.sha256);
         return;
     }
-    try downloadArchive(allocator, io, archive_path, package.filename);
+    try downloadArchive(allocator, io, archive_path, package.filename, download_url);
     try verifyArchive(io, archive_path, package.sha256);
 }
 
-fn downloadArchive(allocator: std.mem.Allocator, io: std.Io, archive_path: []const u8, filename: []const u8) !void {
-    const url = try std.fmt.allocPrint(allocator, "https://go.dev/dl/{s}", .{filename});
+fn downloadArchive(allocator: std.mem.Allocator, io: std.Io, archive_path: []const u8, filename: []const u8, download_url: []const u8) !void {
+    const url = try std.mem.replaceOwned(u8, allocator, download_url, "{s}", filename);
     defer allocator.free(url);
 
     if (std.fs.path.dirname(archive_path)) |parent| {

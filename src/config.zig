@@ -3,6 +3,28 @@ const fs = @import("fs.zig");
 
 pub const UserConfig = struct {
     root: []const u8,
+    release_index_url: []const u8 = default_release_index_url,
+    download_url: []const u8 = default_download_url,
+};
+
+// These are the defaults for a new config file. The URLs themselves are user
+// configuration once persisted, so mirrors do not need to be compiled in at
+// each call site.
+pub const default_release_index_url = "https://go.dev/dl/?mode=json&include=all";
+pub const default_download_url = "https://go.dev/dl/{s}";
+
+pub const ResolvedConfig = struct {
+    allocator: std.mem.Allocator,
+    root: []u8,
+    release_index_url: []u8,
+    download_url: []u8,
+
+    pub fn deinit(self: *ResolvedConfig) void {
+        self.allocator.free(self.root);
+        self.allocator.free(self.release_index_url);
+        self.allocator.free(self.download_url);
+        self.* = undefined;
+    }
 };
 
 pub const RootLayout = struct {
@@ -51,10 +73,47 @@ pub fn resolveRoot(
     env_map: *std.process.Environ.Map,
     cli_root: ?[]const u8,
 ) ![]u8 {
-    if (cli_root) |root_path| return allocator.dupe(u8, root_path);
-    if (env_map.get("GOVM_ROOT")) |root_path| return allocator.dupe(u8, root_path);
-    if (try loadUserRoot(allocator, io, env_map)) |root_path| return root_path;
-    return error.MissingRoot;
+    var resolved = try resolve(allocator, io, env_map, cli_root);
+    defer resolved.deinit();
+    return allocator.dupe(u8, resolved.root);
+}
+
+pub fn resolve(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    env_map: *std.process.Environ.Map,
+    cli_root: ?[]const u8,
+) !ResolvedConfig {
+    const config = try loadUserConfig(allocator, io, env_map);
+    defer if (config) |parsed| parsed.deinit();
+
+    const root = if (cli_root) |path|
+        try allocator.dupe(u8, path)
+    else if (env_map.get("GOVM_ROOT")) |path|
+        try allocator.dupe(u8, path)
+    else if (config) |parsed|
+        try allocator.dupe(u8, parsed.value.root)
+    else
+        return error.MissingRoot;
+
+    const release_index_url = if (config) |parsed|
+        try allocator.dupe(u8, parsed.value.release_index_url)
+    else
+        try allocator.dupe(u8, default_release_index_url);
+    errdefer allocator.free(release_index_url);
+
+    const download_url = if (config) |parsed|
+        try allocator.dupe(u8, parsed.value.download_url)
+    else
+        try allocator.dupe(u8, default_download_url);
+    errdefer allocator.free(download_url);
+
+    return .{
+        .allocator = allocator,
+        .root = root,
+        .release_index_url = release_index_url,
+        .download_url = download_url,
+    };
 }
 
 pub fn persistUserRoot(
@@ -70,9 +129,31 @@ pub fn persistUserRoot(
         try std.Io.Dir.cwd().createDirPath(io, parent);
     }
 
+    var user_config = UserConfig{
+        .root = root_path,
+    };
+    if (fs.pathExists(io, config_path)) {
+        const data = try std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), io, config_path, allocator, .unlimited);
+        defer allocator.free(data);
+        const parsed = try std.json.parseFromSlice(UserConfig, allocator, data, .{
+            .ignore_unknown_fields = true,
+        });
+        defer parsed.deinit();
+        user_config.release_index_url = parsed.value.release_index_url;
+        user_config.download_url = parsed.value.download_url;
+    }
+    try writeUserConfig(allocator, io, config_path, user_config);
+}
+
+fn writeUserConfig(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    config_path: []const u8,
+    user_config: UserConfig,
+) !void {
     var out: std.Io.Writer.Allocating = .init(allocator);
     defer out.deinit();
-    try std.json.Stringify.value(UserConfig{ .root = root_path }, .{}, &out.writer);
+    try std.json.Stringify.value(user_config, .{}, &out.writer);
     try std.Io.Dir.writeFile(std.Io.Dir.cwd(), io, .{
         .sub_path = config_path,
         .data = out.written(),
@@ -80,11 +161,11 @@ pub fn persistUserRoot(
     });
 }
 
-fn loadUserRoot(
+fn loadUserConfig(
     allocator: std.mem.Allocator,
     io: std.Io,
     env_map: *std.process.Environ.Map,
-) !?[]u8 {
+) !?std.json.Parsed(UserConfig) {
     const config_path = try userConfigPath(allocator, env_map);
     defer allocator.free(config_path);
     if (!fs.pathExists(io, config_path)) return null;
@@ -95,9 +176,7 @@ fn loadUserRoot(
     const parsed = try std.json.parseFromSlice(UserConfig, allocator, data, .{
         .ignore_unknown_fields = true,
     });
-    defer parsed.deinit();
-
-    return try allocator.dupe(u8, parsed.value.root);
+    return parsed;
 }
 
 fn userConfigPath(allocator: std.mem.Allocator, env_map: *std.process.Environ.Map) ![]u8 {
@@ -184,4 +263,56 @@ test "env root takes precedence over persisted root" {
     const resolved = try resolveRoot(std.testing.allocator, std.testing.io, &env_map, null);
     defer std.testing.allocator.free(resolved);
     try std.testing.expectEqualStrings("/tmp/env-root", resolved);
+}
+
+test "resolved config loads custom release and download URLs" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const home = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(home);
+    const config_dir = try fs.join(std.testing.allocator, &.{ home, ".govm" });
+    defer std.testing.allocator.free(config_dir);
+    const config_path = try fs.join(std.testing.allocator, &.{ config_dir, "config.json" });
+    defer std.testing.allocator.free(config_path);
+
+    var env_map = std.process.EnvMap.init(std.testing.allocator);
+    defer env_map.deinit();
+    try env_map.put("HOME", home);
+
+    try std.Io.Dir.cwd().createDirPath(std.testing.io, config_dir);
+    try std.Io.Dir.writeFile(std.Io.Dir.cwd(), std.testing.io, .{ .sub_path = config_path, .data =
+        \\{"root":"/tmp/govm-root","release_index_url":"https://mirror.example/dl/index.json","download_url":"https://mirror.example/dl/{s}"},
+    });
+
+    var resolved = try resolve(std.testing.allocator, std.testing.io, &env_map, null);
+    defer resolved.deinit();
+    try std.testing.expectEqualStrings("https://mirror.example/dl/index.json", resolved.release_index_url);
+    try std.testing.expectEqualStrings("https://mirror.example/dl/{s}", resolved.download_url);
+}
+
+test "persisting root preserves configured mirrors" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const home = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(home);
+    var env_map = std.process.EnvMap.init(std.testing.allocator);
+    defer env_map.deinit();
+    try env_map.put("HOME", home);
+
+    const config_dir = try fs.join(std.testing.allocator, &.{ home, ".govm" });
+    defer std.testing.allocator.free(config_dir);
+    const config_path = try fs.join(std.testing.allocator, &.{ config_dir, "config.json" });
+    defer std.testing.allocator.free(config_path);
+    try std.Io.Dir.cwd().createDirPath(std.testing.io, config_dir);
+    try std.Io.Dir.writeFile(std.Io.Dir.cwd(), std.testing.io, .{ .sub_path = config_path, .data =
+        \\{"root":"/tmp/old-root","release_index_url":"https://mirror.example/index","download_url":"https://mirror.example/{s}"},
+    });
+
+    try persistUserRoot(std.testing.allocator, std.testing.io, &env_map, "/tmp/new-root");
+    var resolved = try resolve(std.testing.allocator, std.testing.io, &env_map, null);
+    defer resolved.deinit();
+    try std.testing.expectEqualStrings("/tmp/new-root", resolved.root);
+    try std.testing.expectEqualStrings("https://mirror.example/{s}", resolved.download_url);
 }
