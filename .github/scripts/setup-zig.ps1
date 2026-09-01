@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 
 $indexUrl = "https://ziglang.org/download/index.json"
+$projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$zonPath = Join-Path $projectRoot "build.zig.zon"
 $installRoot = Join-Path $env:RUNNER_TEMP "zig-setup"
 
 if (Test-Path $installRoot) {
@@ -9,10 +11,18 @@ if (Test-Path $installRoot) {
 New-Item -ItemType Directory -Path $installRoot | Out-Null
 
 $index = Invoke-RestMethod -Uri $indexUrl
-$master = $index.master
-if ($null -eq $master) {
-    throw "Failed to resolve 'master' from official Zig index"
+$zon = Get-Content -LiteralPath $zonPath -Raw
+$versionMatch = [regex]::Match($zon, '\.minimum_zig_version\s*=\s*"([^"]+)"')
+if (-not $versionMatch.Success) {
+    throw "Failed to read '.minimum_zig_version' from $zonPath"
 }
+
+$zigVersion = $versionMatch.Groups[1].Value
+$versionEntryProperty = $index.PSObject.Properties[$zigVersion]
+if ($null -eq $versionEntryProperty) {
+    throw "No official Zig download entry for version '$zigVersion'"
+}
+$versionEntry = $versionEntryProperty.Value
 
 $zigOs = switch ($env:RUNNER_OS) {
     "Windows" { "windows" }
@@ -29,9 +39,9 @@ $zigArch = switch ($env:RUNNER_ARCH) {
 }
 
 $key = "$zigArch-$zigOs"
-$entry = $master.$key
+$entry = $versionEntry.$key
 if ($null -eq $entry) {
-    throw "No official Zig download entry for '$key'"
+    throw "No official Zig download entry for version '$zigVersion' and target '$key'"
 }
 
 $tarballUrl = $entry.tarball
@@ -43,7 +53,7 @@ $archiveName = Split-Path -Leaf $tarballUrl
 $archivePath = Join-Path $installRoot $archiveName
 $extractDir = Join-Path $installRoot "extract"
 
-Write-Host "Downloading Zig from official source: $tarballUrl"
+Write-Host "Downloading Zig $zigVersion from official source: $tarballUrl"
 Invoke-WebRequest -Uri $tarballUrl -OutFile $archivePath
 
 New-Item -ItemType Directory -Path $extractDir | Out-Null
