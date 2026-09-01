@@ -55,7 +55,27 @@ jobs:
           Write-Host "Runner architecture: $env:RUNNER_ARCH"
 
       - name: Run unit tests
-        run: zig build --verbose --summary all test
+        if: matrix.name != 'windows-arm64'
+        run: zig build test --summary all
+
+      - name: Run unit tests on Windows ARM64 with diagnostics
+        if: matrix.name == 'windows-arm64'
+        shell: pwsh
+        env:
+          ZIG_DEBUG_CMD: "1"
+          ZIG_VERBOSE_LINK: "1"
+          ZIG_VERBOSE_CC: "1"
+        run: |
+          $ErrorActionPreference = "Continue"
+          $log = Join-Path $env:RUNNER_TEMP "zig-unit-windows-arm64.log"
+          zig build --verbose --summary all --error-style verbose --multiline-errors newline -freference-trace=20 --verbose-link --verbose-llvm-cpu-features test 2>&1 | Tee-Object -FilePath $log
+          $exitCode = $LASTEXITCODE
+          Write-Host "zig build test exit code: $exitCode"
+          Write-Host "===== zig-unit-windows-arm64.log ====="
+          Get-Content -LiteralPath $log
+          if ($exitCode -ne 0) {
+            exit $exitCode
+          }
 
   cross-build:
     name: cross-build-release-targets
@@ -116,7 +136,27 @@ jobs:
           Write-Host "Runner architecture: $env:RUNNER_ARCH"
 
       - name: Build govm
-        run: zig build --verbose --summary all
+        if: matrix.name != 'windows-pwsh-arm64'
+        run: zig build --summary all
+
+      - name: Build govm on Windows ARM64 with diagnostics
+        if: matrix.name == 'windows-pwsh-arm64'
+        shell: pwsh
+        env:
+          ZIG_DEBUG_CMD: "1"
+          ZIG_VERBOSE_LINK: "1"
+          ZIG_VERBOSE_CC: "1"
+        run: |
+          $ErrorActionPreference = "Continue"
+          $log = Join-Path $env:RUNNER_TEMP "zig-build-windows-arm64.log"
+          zig build --verbose --summary all --error-style verbose --multiline-errors newline -freference-trace=20 --verbose-link --verbose-llvm-cpu-features 2>&1 | Tee-Object -FilePath $log
+          $exitCode = $LASTEXITCODE
+          Write-Host "zig build exit code: $exitCode"
+          Write-Host "===== zig-build-windows-arm64.log ====="
+          Get-Content -LiteralPath $log
+          if ($exitCode -ne 0) {
+            exit $exitCode
+          }
 
       - name: Install fish
         if: matrix.install_fish == true
