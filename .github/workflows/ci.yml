@@ -44,20 +44,26 @@ jobs:
         shell: pwsh
         run: .github/scripts/setup-zig.ps1
 
+      - name: Inspect Zig environment
+        shell: pwsh
+        run: |
+          zig version
+          zig env
+
       - name: Run unit tests (bash)
         if: matrix.shell_kind == 'bash'
         shell: bash
-        run: zig build test
+        run: zig build --verbose test
 
       - name: Run unit tests (zsh)
         if: matrix.shell_kind == 'zsh'
         shell: bash
-        run: zsh -c 'zig build test'
+        run: zsh -c 'zig build --verbose test'
 
       - name: Run unit tests (pwsh)
         if: matrix.shell_kind == 'pwsh'
         shell: pwsh
-        run: zig build test
+        run: zig build --verbose test
 
   e2e:
     name: e2e-${{ matrix.name }}
@@ -131,20 +137,26 @@ jobs:
         shell: pwsh
         run: .github/scripts/setup-zig.ps1
 
+      - name: Inspect Zig environment
+        shell: pwsh
+        run: |
+          zig version
+          zig env
+
       - name: Build govm (bash)
         if: matrix.step_shell_kind == 'bash'
         shell: bash
-        run: zig build
+        run: zig build --verbose
 
       - name: Build govm (zsh)
         if: matrix.step_shell_kind == 'zsh'
         shell: bash
-        run: zsh -c 'zig build'
+        run: zsh -c 'zig build --verbose'
 
       - name: Build govm (pwsh)
         if: matrix.step_shell_kind == 'pwsh'
         shell: pwsh
-        run: zig build
+        run: zig build --verbose
 
       - name: Install fish (Ubuntu)
         if: matrix.install_fish && runner.os == 'Linux'
@@ -191,5 +203,11 @@ jobs:
         shell: pwsh
         run: .github/scripts/setup-zig.ps1
 
+      - name: Inspect Zig environment
+        shell: pwsh
+        run: |
+          zig version
+          zig env
+
       - name: Build all release targets
-        run: zig build release
+        run: zig build --verbose release
