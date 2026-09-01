@@ -175,6 +175,7 @@ fn loadUserConfig(
 
     const parsed = try std.json.parseFromSlice(UserConfig, allocator, data, .{
         .ignore_unknown_fields = true,
+        .allocate = .alloc_always,
     });
     return parsed;
 }
